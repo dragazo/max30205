@@ -1,6 +1,6 @@
 [package]
 name = "max30205"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["Devin Jean <emailcruzjean@yahoo.com>"]
 edition = "2021"
 license = "MIT OR Apache-2.0"
@@ -13,4 +13,4 @@ A driver for the MAX30205 temperature sensor communicating over I2C.
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-embedded-hal = "0.2.7"
+embedded-hal = "1.0.0"

@@ -3,7 +3,7 @@
 
 #![doc = include_str!("../README.md")]
 
-use embedded_hal::blocking::i2c;
+use embedded_hal::i2c::I2c;
 
 #[repr(u8)]
 enum Register {
@@ -16,17 +16,17 @@ enum Register {
 const ADDRESSES: &'static [u8] = &[0x49, 0x48];
 
 /// A MAX30205 sensor wrapper.
-pub struct MAX30205<I2C> {
-    i2c: I2C,
+pub struct MAX30205<T: I2c> {
+    i2c: T,
     addr: u8,
 }
-impl<I2C> MAX30205<I2C> {
+impl<T: I2c> MAX30205<T> {
     /// Scans for available devices on the expected set of addresses.
     /// Returns `Some(addr)` with the first found valid address, or `None` if no devices are found.
     ///
     /// Note that a found device is not necessarily a MAX30205 sensor,
     /// as it could be that some other device has the same address as a MAX30205 device.
-    pub fn scan(i2c: &mut I2C) -> Option<u8> where I2C: i2c::Write<u8> {
+    pub fn scan(i2c: &mut T) -> Option<u8> {
         for addr in ADDRESSES.iter().copied() {
             if i2c.write(addr, &[]).is_ok() { return Some(addr) }
         }
@@ -38,14 +38,14 @@ impl<I2C> MAX30205<I2C> {
     /// Also initializes the device for usage, which requires the I2C bus for communication.
     /// The initial state disables power saving mode.
     /// See [`MAX30205::power_down`] for details.
-    pub fn new<E>(addr: u8, mut i2c: I2C) -> Result<Self, E> where I2C: i2c::Write<u8, Error = E> {
+    pub fn new(addr: u8, mut i2c: T) -> Result<Self, T::Error> {
         i2c.write(addr, &[Register::Config as u8, 0x00])?;
         i2c.write(addr, &[Register::Thyst  as u8, 0x00])?;
         i2c.write(addr, &[Register::Tos    as u8, 0x00])?;
         Ok(Self { i2c, addr })
     }
 
-    fn transform_config<E>(&mut self, trans: fn(u8) -> u8) -> Result<(), E> where I2C: i2c::WriteRead<u8, Error = E> + i2c::Write<u8, Error = E> {
+    fn transform_config(&mut self, trans: fn(u8) -> u8) -> Result<(), T::Error> {
         let mut reg = [0u8];
         self.i2c.write_read(self.addr, &[Register::Config as u8], &mut reg)?;
         self.i2c.write(self.addr, &[Register::Config as u8, trans(reg[0])])?;
@@ -58,22 +58,22 @@ impl<I2C> MAX30205<I2C> {
     ///
     /// You may use [`MAX30205::power_up`] to exit power saving mode and resume continuous updates,
     /// or [`MAX30205::update_once`] to get on-demand temperature updates while staying in power saving mode.
-    pub fn power_down<E>(&mut self) -> Result<(), E> where I2C: i2c::WriteRead<u8, Error = E> + i2c::Write<u8, Error = E> {
+    pub fn power_down(&mut self) -> Result<(), T::Error> {
         self.transform_config(|x| x | 0x01)
     }
     /// Exits power saving mode and resumes continuous temperature updates. See [`MAX30205::power_down`] for details.
-    pub fn power_up<E>(&mut self) -> Result<(), E> where I2C: i2c::WriteRead<u8, Error = E> + i2c::Write<u8, Error = E> {
+    pub fn power_up(&mut self) -> Result<(), T::Error> {
         self.transform_config(|x| x & !0x01)
     }
     /// Performs a single temperature update while in power saving mode.
     /// When not in power saving mode, this has no effect.
     /// See [`MAX30205::power_down`] for more details.
-    pub fn update_once<E>(&mut self) -> Result<(), E> where I2C: i2c::WriteRead<u8, Error = E> + i2c::Write<u8, Error = E> {
+    pub fn update_once(&mut self) -> Result<(), T::Error> {
         self.transform_config(|x| x | 0x80)
     }
 
     /// Gets an instantaneous temperature reading (in Celsius) from the device.
-    pub fn get_temperature<E>(&mut self) -> Result<f64, E> where I2C: i2c::WriteRead<u8, Error = E> {
+    pub fn get_temperature(&mut self) -> Result<f64, T::Error> {
         let mut res = [0; 2];
         self.i2c.write_read(self.addr, &[Register::Temp as u8], &mut res)?;
         let res = ((res[0] as u16) << 8) | (res[1] as u16);
